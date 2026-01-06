@@ -142,6 +142,8 @@ QMANUALS_PATH=/mnt/q  # Linux
 python scripts/init_db.py
 ```
 
+This creates the ChromaDB vector store and verifies your configuration.
+
 ### 2. Ingest Documents
 
 ```bash
@@ -154,7 +156,19 @@ This will:
 - Generate embeddings
 - Store in ChromaDB
 
-### 3. Launch the Application
+**Options:**
+```bash
+# Ingest specific file types
+python scripts/ingest_documents.py --file-types .pdf .docx
+
+# Force re-ingestion of all documents
+python scripts/ingest_documents.py --force
+
+# Don't search subdirectories
+python scripts/ingest_documents.py --no-recursive
+```
+
+### 3. Launch the Web Application
 
 ```bash
 streamlit run src/ui/app.py
@@ -162,11 +176,38 @@ streamlit run src/ui/app.py
 
 The web interface will open at `http://localhost:8501`
 
-### 4. Start Chatting
+### 4. Using QmanAssist
 
-- Ask questions about your quality documentation
-- Get intelligent answers with source citations
-- Switch LLM providers in the settings panel
+**Chat Interface:**
+- Type questions in natural language
+- Get AI-generated answers with source citations
+- View which documents were referenced
+- Export conversation history
+
+**Document Explorer:**
+- View indexed documents and statistics
+- Browse source files on Q:\ drive
+- Trigger document re-ingestion
+- Manage the vector database
+
+**Settings:**
+- Switch between OpenAI, Claude, or Ollama
+- Configure model parameters (temperature, max tokens)
+- Adjust retrieval settings (top_k, similarity threshold)
+- Test API connections
+
+### 5. Testing the RAG System
+
+```bash
+# Interactive testing mode
+python scripts/test_rag.py
+
+# Test a specific query
+python scripts/test_rag.py --query "What are the quality control procedures?"
+
+# Use multi-step reasoning
+python scripts/test_rag.py --workflow multi-step
+```
 
 ## Configuration
 
@@ -222,41 +263,47 @@ ruff check src/ tests/
 
 ## Roadmap
 
-### Current Status: Phase 1 Complete ✓
+### Current Status: Phase 5 Complete ✓
 
+**✅ Phase 1: Foundation**
 - [x] Project structure and configuration
 - [x] LLM factory with provider switching
 - [x] Settings management with Pydantic
 
+**✅ Phase 2: Document Ingestion**
+- [x] Network share access utilities
+- [x] PDF, Word, Excel loaders
+- [x] Semantic chunking
+- [x] ChromaDB integration
+- [x] Metadata enrichment
+
+**✅ Phase 3: RAG System**
+- [x] Vector store wrapper
+- [x] Retrieval implementation with similarity scoring
+- [x] Query processing and expansion
+- [x] Response generation with citations
+- [x] Simple and multi-step RAG workflows
+
+**✅ Phase 4: Advanced Workflows**
+- [x] Simple RAG workflow
+- [x] Multi-step reasoning with query decomposition
+- [x] Citation handling with source tracking
+- [x] Interactive RAG testing
+
+**✅ Phase 5: Web UI**
+- [x] Streamlit chat interface
+- [x] Document explorer and management
+- [x] Settings panel with LLM configuration
+- [x] Export conversation history
+- [x] Real-time statistics
+
 ### Next Steps
 
-**Phase 2: Document Ingestion** (In Progress)
-- [ ] Network share access utilities
-- [ ] PDF, Word, Excel loaders
-- [ ] Semantic chunking
-- [ ] ChromaDB integration
-
-**Phase 3: RAG System**
-- [ ] Vector store wrapper
-- [ ] Retrieval implementation
-- [ ] Query processing
-- [ ] Response generation
-
-**Phase 4: LangGraph Workflows**
-- [ ] Simple RAG workflow
-- [ ] Multi-step reasoning
-- [ ] Citation handling
-
-**Phase 5: Web UI**
-- [ ] Chat interface
-- [ ] Document management
-- [ ] Settings panel
-
-**Phase 6: Testing & Polish**
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Documentation
+**Phase 6: Testing & Polish** (Optional)
+- [ ] Unit tests for core components
+- [ ] Integration tests for workflows
 - [ ] Performance optimization
+- [ ] User documentation
 
 ### Future Enhancements (v2.0)
 
@@ -265,7 +312,9 @@ ruff check src/ tests/
 - [ ] Document monitoring and auto-indexing
 - [ ] Multi-user support with authentication
 - [ ] Analytics dashboard
-- [ ] Export capabilities
+- [ ] Export capabilities (PDF reports)
+- [ ] Email notifications for updates
+- [ ] Mobile-responsive UI
 
 ## Troubleshooting
 
