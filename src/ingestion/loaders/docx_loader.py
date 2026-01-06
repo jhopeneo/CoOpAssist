@@ -1,6 +1,7 @@
 """
 Word document loader for QmanAssist.
 Uses python-docx to extract text, tables, and structure from .docx files.
+Supports both local files and SMB network shares.
 """
 
 from pathlib import Path
@@ -10,6 +11,8 @@ import docx
 from docx.document import Document as DocxDocument
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+import smbclient
+import io
 
 from .base_loader import BaseDocumentLoader, Document
 
@@ -38,7 +41,18 @@ class WordDocumentLoader(BaseDocumentLoader):
             List containing a single Document object with full document content.
         """
         try:
-            doc = docx.Document(self.file_path)
+            # Check if it's an SMB path
+            path_str = str(self.file_path)
+            if path_str.startswith("//") or path_str.startswith("\\\\"):
+                # Read from SMB into memory
+                smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+                with smbclient.open_file(smb_path, mode="rb") as smb_file:
+                    docx_data = io.BytesIO(smb_file.read())
+                    doc = docx.Document(docx_data)
+            else:
+                # Local file
+                doc = docx.Document(self.file_path)
+
             base_metadata = self._get_base_metadata()
 
             # Extract content with structure

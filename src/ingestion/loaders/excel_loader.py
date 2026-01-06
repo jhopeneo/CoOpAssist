@@ -1,12 +1,15 @@
 """
 Excel and CSV document loader for QmanAssist.
 Uses pandas to extract and structure tabular data.
+Supports both local files and SMB network shares.
 """
 
 from pathlib import Path
 from typing import List
 from loguru import logger
 import pandas as pd
+import smbclient
+import io
 
 from .base_loader import BaseDocumentLoader, Document
 
@@ -67,8 +70,16 @@ class ExcelLoader(BaseDocumentLoader):
         base_metadata = self._get_base_metadata()
         base_metadata["doc_type"] = "csv"
 
-        # Read CSV
-        df = pd.read_csv(self.file_path)
+        # Check if it's an SMB path
+        path_str = str(self.file_path)
+        if path_str.startswith("//") or path_str.startswith("\\\\"):
+            # Read from SMB into memory
+            smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+            with smbclient.open_file(smb_path, mode="rb") as smb_file:
+                df = pd.read_csv(io.BytesIO(smb_file.read()))
+        else:
+            # Read local CSV
+            df = pd.read_csv(self.file_path)
 
         # Create documents from chunks
         documents = self._dataframe_to_documents(
@@ -87,8 +98,16 @@ class ExcelLoader(BaseDocumentLoader):
         base_metadata = self._get_base_metadata()
         base_metadata["doc_type"] = "excel"
 
-        # Read all sheets
-        excel_file = pd.ExcelFile(self.file_path)
+        # Check if it's an SMB path
+        path_str = str(self.file_path)
+        if path_str.startswith("//") or path_str.startswith("\\\\"):
+            # Read from SMB into memory
+            smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+            with smbclient.open_file(smb_path, mode="rb") as smb_file:
+                excel_file = pd.ExcelFile(io.BytesIO(smb_file.read()))
+        else:
+            # Read local Excel file
+            excel_file = pd.ExcelFile(self.file_path)
         base_metadata["sheet_count"] = len(excel_file.sheet_names)
 
         for sheet_name in excel_file.sheet_names:

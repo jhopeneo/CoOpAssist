@@ -39,11 +39,9 @@ class VectorStore:
         Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
 
         # Initialize ChromaDB client
-        self.client = chromadb.Client(
-            ChromaSettings(
-                persist_directory=self.persist_directory,
-                anonymized_telemetry=False,
-            )
+        self.client = chromadb.PersistentClient(
+            path=self.persist_directory,
+            settings=ChromaSettings(anonymized_telemetry=False)
         )
 
         # Set up embedding function
@@ -207,11 +205,13 @@ class VectorStore:
         try:
             count = self.collection.count()
 
-            # Get sample metadata to determine doc types
-            sample = self.collection.get(limit=100)
+            # Get ALL metadata to properly count doc types
+            # Only fetch metadata, not full documents for efficiency
+            all_docs = self.collection.get(include=["metadatas"])
             doc_types = {}
-            if sample["metadatas"]:
-                for metadata in sample["metadatas"]:
+
+            if all_docs["metadatas"]:
+                for metadata in all_docs["metadatas"]:
                     doc_type = metadata.get("doc_type", "unknown")
                     doc_types[doc_type] = doc_types.get(doc_type, 0) + 1
 

@@ -111,10 +111,10 @@ class Settings(BaseSettings):
     )
 
     similarity_threshold: float = Field(
-        default=0.7,
+        default=0.35,  # Lowered to allow broader matches - L2 distances of ~1.85 will pass
         ge=0.0,
         le=1.0,
-        description="Minimum similarity score for retrieval"
+        description="Minimum similarity score for retrieval (adjusted for L2 distance)"
     )
 
     # ==================== Chunking Configuration ====================
@@ -128,6 +128,20 @@ class Settings(BaseSettings):
         default=200,
         ge=0,
         description="Overlap between chunks in tokens"
+    )
+
+    # ==================== Ingestion Performance Settings ====================
+    ingestion_workers: int = Field(
+        default=4,
+        gt=0,
+        le=32,
+        description="Number of parallel workers for document ingestion"
+    )
+
+    ingestion_batch_size: int = Field(
+        default=50,
+        gt=0,
+        description="Number of documents to process in a batch before adding to vector store"
     )
 
     # ==================== Application Settings ====================

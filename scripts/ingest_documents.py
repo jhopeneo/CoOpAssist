@@ -51,11 +51,29 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--limit",
+        type=int,
+        help="Limit number of documents to ingest (for testing)",
+    )
+
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level",
+    )
+
+    parser.add_argument(
+        "--workers",
+        type=int,
+        help="Number of parallel workers (default: from settings, typically 4)",
+    )
+
+    parser.add_argument(
+        "--no-parallel",
+        action="store_true",
+        help="Disable parallel processing (process files sequentially)",
     )
 
     return parser.parse_args()
@@ -109,7 +127,17 @@ def main():
 
     # Initialize pipeline
     logger.info("\nInitializing ingestion pipeline...")
-    pipeline = IngestionPipeline(skip_existing=not args.force)
+
+    # Determine parallel processing settings
+    workers = args.workers if args.workers else settings.ingestion_workers
+    use_parallel = not args.no_parallel and workers > 1
+
+    if use_parallel:
+        logger.info(f"Using parallel processing with {workers} workers")
+    else:
+        logger.info("Using sequential processing")
+
+    pipeline = IngestionPipeline(skip_existing=not args.force, workers=workers)
 
     # Show current vector store stats
     vector_store = get_vector_store()
@@ -127,6 +155,7 @@ def main():
             directory=source_dir,
             recursive=not args.no_recursive,
             file_types=args.file_types,
+            parallel=use_parallel,
         )
 
         # Show final results

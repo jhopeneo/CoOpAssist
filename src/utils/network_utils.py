@@ -1,6 +1,6 @@
 """
-Network utilities for accessing the Q:\ drive (\\neonas-01\qmanuals).
-Handles both Windows mapped drives and Linux SMB mounts.
+Network utilities for accessing the Q:\\ drive (\\\\neonas-01\\qmanuals).
+Handles both Windows mapped drives and Linux SMB mounts/connections.
 """
 
 import os
@@ -8,6 +8,8 @@ import platform
 from pathlib import Path
 from typing import List, Optional, Tuple
 from loguru import logger
+import smbclient
+from smbclient import register_session
 
 from config.settings import get_settings
 
@@ -23,45 +25,62 @@ class NetworkPathAccessor:
         """
         self.settings = settings or get_settings()
         self.platform = platform.system().lower()
+        self._smb_initialized = False
 
-    def get_document_path(self) -> Path:
+        # Initialize SMB session if using network path
+        if self.settings.is_network_path():
+            self._init_smb_session()
+
+    def _init_smb_session(self):
+        """Initialize SMB session with credentials."""
+        try:
+            # Extract server from path (//server/share)
+            path = self.settings.qmanuals_network_path
+            parts = path.replace("\\\\", "//").strip("/").split("/")
+            server = parts[0] if parts else "neonas-01"
+
+            # Register SMB session with credentials
+            if self.settings.smb_username and self.settings.smb_password:
+                username_with_domain = f"{self.settings.smb_domain}\\{self.settings.smb_username}" if self.settings.smb_domain else self.settings.smb_username
+                register_session(server, username=username_with_domain, password=self.settings.smb_password)
+                self._smb_initialized = True
+                logger.info(f"SMB session initialized for {server}")
+            else:
+                logger.warning("SMB credentials not configured")
+        except Exception as e:
+            logger.error(f"Failed to initialize SMB session: {e}")
+
+    def get_document_path(self) -> str:
         """Get the document source path for the current platform.
 
         Returns:
-            Path object for the document source.
+            Path string for the document source (may be SMB path).
 
         Raises:
             FileNotFoundError: If the path doesn't exist or isn't accessible.
         """
         path_str = self.settings.qmanuals_path
 
-        # Convert to Path object
-        path = Path(path_str)
+        # For network paths, validate using SMB and return the string path
+        if path_str.startswith("//") or path_str.startswith("\\\\"):
+            if self._smb_initialized:
+                # Return the network path as-is for SMB operations
+                logger.info(f"Using SMB document path: {path_str}")
+                return path_str
+            else:
+                raise FileNotFoundError(
+                    f"SMB session not initialized. Cannot access {path_str}"
+                )
 
-        # Check if path exists and is accessible
+        # For local paths, check accessibility
+        path = Path(path_str)
         if not self.is_path_accessible(path):
-            # Try alternative network path
-            network_path = self.settings.qmanuals_network_path
-            logger.warning(
-                f"Primary path {path} not accessible, trying network path {network_path}"
+            raise FileNotFoundError(
+                f"Document path not accessible: {path_str}"
             )
 
-            if self.platform == "windows":
-                # Try UNC path on Windows
-                path = Path(network_path)
-            else:
-                # On Linux, suggest mounting
-                logger.error(
-                    f"Network path not accessible. Please mount {network_path} "
-                    f"using: sudo mount -t cifs {network_path} /mnt/q"
-                )
-                raise FileNotFoundError(
-                    f"Document path not accessible: {path_str}. "
-                    f"Please ensure Q:\\ drive is mapped or network share is mounted."
-                )
-
-        logger.info(f"Using document path: {path}")
-        return path
+        logger.info(f"Using local document path: {path}")
+        return str(path)
 
     def is_path_accessible(self, path: Path) -> bool:
         """Check if a path exists and is accessible.
@@ -72,11 +91,25 @@ class NetworkPathAccessor:
         Returns:
             True if path is accessible, False otherwise.
         """
-        try:
-            return path.exists() and path.is_dir()
-        except (OSError, PermissionError) as e:
-            logger.debug(f"Path {path} not accessible: {e}")
-            return False
+        path_str = str(path)
+
+        # Check if it's a network path
+        if path_str.startswith("//") or path_str.startswith("\\\\"):
+            try:
+                # Use smbclient to check if path is accessible
+                smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+                items = list(smbclient.listdir(smb_path))
+                return True
+            except Exception as e:
+                logger.debug(f"SMB path {path} not accessible: {e}")
+                return False
+        else:
+            # Local path check
+            try:
+                return path.exists() and path.is_dir()
+            except (OSError, PermissionError) as e:
+                logger.debug(f"Path {path} not accessible: {e}")
+                return False
 
     def list_documents(
         self,
@@ -105,24 +138,66 @@ class NetworkPathAccessor:
         extensions = [ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in extensions]
 
         documents = []
+        path_str = str(path)
 
         try:
-            if recursive:
-                # Recursively search all subdirectories
-                for ext in extensions:
-                    pattern = f"**/*{ext}"
-                    documents.extend(path.glob(pattern))
+            # Check if it's a network path
+            if path_str.startswith("//") or path_str.startswith("\\\\"):
+                # Use smbclient for SMB paths
+                smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+                documents = self._list_smb_documents(smb_path, extensions, recursive)
             else:
-                # Only search immediate directory
-                for ext in extensions:
-                    pattern = f"*{ext}"
-                    documents.extend(path.glob(pattern))
+                # Use standard path.glob for local paths
+                if recursive:
+                    for ext in extensions:
+                        pattern = f"**/*{ext}"
+                        documents.extend(path.glob(pattern))
+                else:
+                    for ext in extensions:
+                        pattern = f"*{ext}"
+                        documents.extend(path.glob(pattern))
+                documents = sorted(documents)
 
             logger.info(f"Found {len(documents)} documents in {path}")
-            return sorted(documents)
+            return documents
 
         except (OSError, PermissionError) as e:
             logger.error(f"Error listing documents in {path}: {e}")
+            return []
+
+    def _list_smb_documents(self, smb_path: str, extensions: List[str], recursive: bool) -> List[Path]:
+        """List documents from SMB share.
+
+        Args:
+            smb_path: SMB path in UNC format (\\\\server\\share\\path)
+            extensions: List of file extensions to include
+            recursive: Whether to search recursively
+
+        Returns:
+            List of Path objects for matching documents
+        """
+        documents = []
+
+        try:
+            if recursive:
+                # Recursively walk the directory tree
+                for root, dirs, files in smbclient.walk(smb_path):
+                    for file in files:
+                        if any(file.lower().endswith(ext) for ext in extensions):
+                            full_path = os.path.join(root, file).replace("\\", "/")
+                            documents.append(Path(full_path))
+            else:
+                # Only list files in the immediate directory
+                for item in smbclient.scandir(smb_path):
+                    if item.is_file():
+                        if any(item.name.lower().endswith(ext) for ext in extensions):
+                            full_path = os.path.join(smb_path, item.name).replace("\\", "/")
+                            documents.append(Path(full_path))
+
+            return sorted(documents)
+
+        except Exception as e:
+            logger.error(f"Error listing SMB documents in {smb_path}: {e}")
             return []
 
     def get_file_info(self, file_path: Path) -> dict:
@@ -156,16 +231,19 @@ class NetworkPathAccessor:
             Tuple of (success: bool, message: str)
         """
         try:
-            path = self.get_document_path()
-
-            if not self.is_path_accessible(path):
-                return False, f"Path {path} is not accessible"
+            path_str = self.get_document_path()
 
             # Try to list files to verify read permissions
-            test_list = list(path.iterdir())
-            logger.info(f"Network access validated. Found {len(test_list)} items in root.")
+            if path_str.startswith("//") or path_str.startswith("\\\\"):
+                # SMB path
+                smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+                test_list = list(smbclient.listdir(smb_path))
+            else:
+                # Local path
+                test_list = list(Path(path_str).iterdir())
 
-            return True, f"Network access successful to {path}"
+            logger.info(f"Network access validated. Found {len(test_list)} items in root.")
+            return True, f"Network access successful to {path_str}"
 
         except FileNotFoundError as e:
             return False, str(e)

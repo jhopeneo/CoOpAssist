@@ -1,6 +1,7 @@
 """
 PDF document loader for QmanAssist.
 Uses PyPDF2 for basic text extraction and pdfplumber for tables.
+Supports both local files and SMB network shares.
 """
 
 from pathlib import Path
@@ -8,6 +9,9 @@ from typing import List
 from loguru import logger
 import PyPDF2
 import pdfplumber
+import smbclient
+import tempfile
+import io
 
 from .base_loader import BaseDocumentLoader, Document
 
@@ -64,34 +68,60 @@ class PDFLoader(BaseDocumentLoader):
         documents = []
         base_metadata = self._get_base_metadata()
 
-        with pdfplumber.open(self.file_path) as pdf:
-            base_metadata["page_count"] = len(pdf.pages)
+        # Check if it's an SMB path
+        path_str = str(self.file_path)
+        if path_str.startswith("//") or path_str.startswith("\\\\"):
+            # Read from SMB into memory
+            smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+            with smbclient.open_file(smb_path, mode="rb") as smb_file:
+                pdf_data = io.BytesIO(smb_file.read())
+                with pdfplumber.open(pdf_data) as pdf:
+                    documents = self._extract_with_pdfplumber(pdf, base_metadata)
+        else:
+            # Local file
+            with pdfplumber.open(self.file_path) as pdf:
+                documents = self._extract_with_pdfplumber(pdf, base_metadata)
 
-            for page_num, page in enumerate(pdf.pages, start=1):
-                # Extract text
-                text = page.extract_text() or ""
+        return documents
 
-                # Extract tables
-                tables = page.extract_tables()
-                table_text = self._format_tables(tables)
+    def _extract_with_pdfplumber(self, pdf, base_metadata: dict) -> List[Document]:
+        """Extract content from pdfplumber PDF object.
 
-                # Combine text and tables
-                content = text
-                if table_text:
-                    content += "\n\n" + table_text
+        Args:
+            pdf: pdfplumber PDF object
+            base_metadata: Base metadata dictionary
 
-                content = self._clean_text(content)
+        Returns:
+            List of Document objects
+        """
+        documents = []
+        base_metadata["page_count"] = len(pdf.pages)
 
-                if content:  # Only create document if there's content
-                    metadata = base_metadata.copy()
-                    metadata.update({
-                        "page_number": page_num,
-                        "doc_type": "pdf",
-                        "has_tables": bool(tables),
-                        "table_count": len(tables) if tables else 0,
-                    })
+        for page_num, page in enumerate(pdf.pages, start=1):
+            # Extract text
+            text = page.extract_text() or ""
 
-                    documents.append(Document(content=content, metadata=metadata))
+            # Extract tables
+            tables = page.extract_tables()
+            table_text = self._format_tables(tables)
+
+            # Combine text and tables
+            content = text
+            if table_text:
+                content += "\n\n" + table_text
+
+            content = self._clean_text(content)
+
+            if content:  # Only create document if there's content
+                metadata = base_metadata.copy()
+                metadata.update({
+                    "page_number": page_num,
+                    "doc_type": "pdf",
+                    "has_tables": bool(tables),
+                    "table_count": len(tables) if tables else 0,
+                })
+
+                documents.append(Document(content=content, metadata=metadata))
 
         return documents
 
@@ -104,28 +134,54 @@ class PDFLoader(BaseDocumentLoader):
         documents = []
         base_metadata = self._get_base_metadata()
 
-        with open(self.file_path, "rb") as file:
-            reader = PyPDF2.PdfReader(file)
-            base_metadata["page_count"] = len(reader.pages)
+        # Check if it's an SMB path
+        path_str = str(self.file_path)
+        if path_str.startswith("//") or path_str.startswith("\\\\"):
+            # Read from SMB into memory
+            smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+            with smbclient.open_file(smb_path, mode="rb") as smb_file:
+                pdf_data = io.BytesIO(smb_file.read())
+                reader = PyPDF2.PdfReader(pdf_data)
+                documents = self._extract_with_pypdf2(reader, base_metadata)
+        else:
+            # Local file
+            with open(self.file_path, "rb") as file:
+                reader = PyPDF2.PdfReader(file)
+                documents = self._extract_with_pypdf2(reader, base_metadata)
 
-            for page_num, page in enumerate(reader.pages, start=1):
-                try:
-                    text = page.extract_text()
-                    content = self._clean_text(text)
+        return documents
 
-                    if content:
-                        metadata = base_metadata.copy()
-                        metadata.update({
-                            "page_number": page_num,
-                            "doc_type": "pdf",
-                            "has_tables": False,
-                        })
+    def _extract_with_pypdf2(self, reader, base_metadata: dict) -> List[Document]:
+        """Extract content from PyPDF2 reader object.
 
-                        documents.append(Document(content=content, metadata=metadata))
+        Args:
+            reader: PyPDF2 PdfReader object
+            base_metadata: Base metadata dictionary
 
-                except Exception as e:
-                    logger.warning(f"Error extracting page {page_num}: {e}")
-                    continue
+        Returns:
+            List of Document objects
+        """
+        documents = []
+        base_metadata["page_count"] = len(reader.pages)
+
+        for page_num, page in enumerate(reader.pages, start=1):
+            try:
+                text = page.extract_text()
+                content = self._clean_text(text)
+
+                if content:
+                    metadata = base_metadata.copy()
+                    metadata.update({
+                        "page_number": page_num,
+                        "doc_type": "pdf",
+                        "has_tables": False,
+                    })
+
+                    documents.append(Document(content=content, metadata=metadata))
+
+            except Exception as e:
+                logger.warning(f"Error extracting page {page_num}: {e}")
+                continue
 
         return documents
 

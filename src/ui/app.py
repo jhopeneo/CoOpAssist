@@ -66,10 +66,13 @@ def render_header():
 def render_sidebar():
     """Render sidebar navigation and settings."""
     with st.sidebar:
-        st.image(
-            "https://via.placeholder.com/150x50/1f77b4/ffffff?text=QmanAssist",
-            use_container_width=True,
-        )
+        # Branding header
+        st.markdown("""
+        <div style='text-align: center; padding: 10px 0;'>
+            <h1 style='color: #1f77b4; margin: 0; font-size: 28px;'>📚 QmanAssist</h1>
+            <p style='color: #666; margin: 5px 0 0 0; font-size: 12px;'>Quality Documentation Assistant</p>
+        </div>
+        """, unsafe_allow_html=True)
 
         st.markdown("---")
 

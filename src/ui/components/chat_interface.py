@@ -28,11 +28,11 @@ def render_chat_interface():
 
     with col2:
         top_k = st.slider(
-            "Documents to retrieve",
+            "Context chunks",
             min_value=1,
-            max_value=10,
+            max_value=20,
             value=5,
-            help="Number of document chunks to retrieve",
+            help="Number of relevant chunks to retrieve (searches ALL documents)",
         )
 
     with col3:
@@ -53,17 +53,21 @@ def render_chat_interface():
                     """
                     👋 **Welcome to QmanAssist!**
 
-                    I'm here to help you find information in your quality documentation.
+                    I'm here to help you find information across **all your quality documentation**.
+                    The system automatically searches through all documents in the database.
+
                     Ask me anything about:
                     - Quality procedures and standards
                     - Documentation requirements
                     - Process guidelines
                     - Compliance information
+                    - Material specifications
+                    - Ford/IATF requirements
 
                     **Try asking:**
                     - "What are the quality control procedures?"
-                    - "How do we handle customer complaints?"
-                    - "What documentation is required for audits?"
+                    - "What are the Ford IATF requirements?"
+                    - "Find information about environmental procedures"
                     """
                 )
         else:

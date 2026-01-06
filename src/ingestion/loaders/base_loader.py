@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 from dataclasses import dataclass
 from datetime import datetime
+import smbclient
 
 
 @dataclass
@@ -35,8 +36,12 @@ class BaseDocumentLoader(ABC):
             file_path: Path to the document file.
         """
         self.file_path = Path(file_path)
-        if not self.file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+        # Skip existence check for SMB paths (will be validated during load)
+        path_str = str(file_path)
+        if not (path_str.startswith("//") or path_str.startswith("\\\\")):
+            # Only check local paths
+            if not self.file_path.exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
 
     @abstractmethod
     def load(self) -> List[Document]:
@@ -77,15 +82,39 @@ class BaseDocumentLoader(ABC):
         Returns:
             Dictionary with base metadata fields.
         """
-        stat = self.file_path.stat()
-        return {
-            "source": str(self.file_path),
-            "filename": self.file_path.name,
-            "file_type": self.file_path.suffix.lower(),
-            "file_size_bytes": stat.st_size,
-            "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            "created_time": datetime.fromtimestamp(stat.st_ctime).isoformat(),
-        }
+        path_str = str(self.file_path)
+
+        # Handle SMB paths differently
+        if path_str.startswith("//") or path_str.startswith("\\\\"):
+            try:
+                smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+                stat = smbclient.stat(smb_path)
+                return {
+                    "source": str(self.file_path),
+                    "filename": self.file_path.name,
+                    "file_type": self.file_path.suffix.lower(),
+                    "file_size_bytes": stat.st_size,
+                    "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "created_time": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                }
+            except Exception:
+                # Fallback if stat fails
+                return {
+                    "source": str(self.file_path),
+                    "filename": self.file_path.name,
+                    "file_type": self.file_path.suffix.lower(),
+                }
+        else:
+            # Local file
+            stat = self.file_path.stat()
+            return {
+                "source": str(self.file_path),
+                "filename": self.file_path.name,
+                "file_type": self.file_path.suffix.lower(),
+                "file_size_bytes": stat.st_size,
+                "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "created_time": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+            }
 
     def _clean_text(self, text: str) -> str:
         """Clean and normalize text content.
