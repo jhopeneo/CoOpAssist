@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  qmanassist:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qmanassist
+    ports:
+      - "8501:8501"
+    environment:
+      # LLM Provider Configuration
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+
+      # LLM Model Settings
+      - LLM_MODEL=${LLM_MODEL:-gpt-4-turbo-preview}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-2000}
+
+      # Embedding Configuration
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-openai}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+
+      # Document Source Path
+      - QMANUALS_PATH=${QMANUALS_PATH:-/data/qmanuals}
+      - QMANUALS_NETWORK_PATH=${QMANUALS_NETWORK_PATH}
+
+      # SMB Credentials (if needed)
+      - SMB_USERNAME=${SMB_USERNAME}
+      - SMB_PASSWORD=${SMB_PASSWORD}
+      - SMB_DOMAIN=${SMB_DOMAIN}
+
+      # ChromaDB Configuration
+      - CHROMA_DB_PATH=/app/data/chroma_db
+      - CHROMA_COLLECTION_NAME=${CHROMA_COLLECTION_NAME:-qmanuals}
+
+      # Performance Settings
+      - INGESTION_WORKERS=${INGESTION_WORKERS:-4}
+      - INGESTION_BATCH_SIZE=${INGESTION_BATCH_SIZE:-50}
+
+      # Retrieval Settings
+      - TOP_K=${TOP_K:-5}
+      - SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD:-0.35}
+
+      # Application Settings
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+    volumes:
+      # Persist ChromaDB data
+      - chroma_data:/app/data/chroma_db
+
+      # Mount Q:\ drive or documents directory
+      # Windows: Use Docker Desktop file sharing settings
+      # Linux/WSL: Mount your Q:\ equivalent
+      - ${QMANUALS_HOST_PATH:-./sample_data}:/data/qmanuals:ro
+
+      # Optional: Mount logs directory
+      - ./logs:/app/logs
+
+    restart: unless-stopped
+
+    # Resource limits - adjust based on your Docker Desktop resources
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'      # Use up to 4 CPU cores
+          memory: 8G       # Maximum 8GB RAM
+        reservations:
+          cpus: '2.0'      # Reserve at least 2 cores
+          memory: 4G       # Reserve at least 4GB RAM
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  chroma_data:
+    driver: local
