@@ -61,6 +61,10 @@ services:
 
     restart: unless-stopped
 
+    # Add host entry for network share resolution
+    extra_hosts:
+      - "neonas-01:192.168.95.35"
+
     # Resource limits - adjust based on your Docker Desktop resources
     deploy:
       resources:
