@@ -4,6 +4,7 @@ langgraph==0.0.40
 langchain-openai==0.1.0
 langchain-anthropic==0.1.0
 langchain-community==0.0.38
+langsmith==0.1.17  # Pin for compatibility with langchain 0.1.20
 
 # Vector Database
 chromadb==0.4.22
