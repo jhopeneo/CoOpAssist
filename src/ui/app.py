@@ -156,13 +156,6 @@ def main():
     elif st.session_state.current_page == "settings":
         render_settings_panel()
 
-    # Auto-refresh if ingestion is running (to update timer)
-    from src.ui.components.document_explorer import _ingestion_status
-    if _ingestion_status["running"]:
-        import time
-        time.sleep(2)
-        st.rerun()
-
 
 if __name__ == "__main__":
     main()
