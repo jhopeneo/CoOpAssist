@@ -69,7 +69,7 @@ def render_header():
         st.caption("AI-Powered Quality Documentation Assistant | Neocon International")
 
     with col2:
-        # Status indicator
+        # Status indicator (removed DB check to improve speed)
         settings = st.session_state.settings
         if settings.validate_api_key():
             st.success(f"🟢 {settings.llm_provider.upper()} Connected")
@@ -107,19 +107,8 @@ def render_sidebar():
 
         st.markdown("---")
 
-        # Quick stats (fast count only)
-        try:
-            from src.core.vector_store import get_vector_store
-
-            vector_store = get_vector_store()
-            doc_count = vector_store.collection.count()
-
-            st.subheader("Database Stats")
-            st.metric("Total Documents", doc_count)
-
-        except Exception as e:
-            st.warning("Database not initialized")
-            logger.error(f"Error loading stats: {e}")
+        # Removed stats from sidebar - was causing slowness
+        # Stats now only shown on Documents page
 
         st.markdown("---")
 
