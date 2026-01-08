@@ -254,7 +254,8 @@ class IngestionPipeline:
         logger.info(f"Processing {len(documents)} documents with {self.workers} workers")
 
         # Process documents in batches
-        batch_size = self.settings.ingestion_batch_size
+        # Reduced from 50 to 10 to avoid OpenAI embedding token limits (300k tokens/request)
+        batch_size = 10  # Conservative batch size to avoid "max_tokens_per_request" errors
         all_docs_to_add = []
 
         # Use ThreadPoolExecutor instead of ProcessPoolExecutor for better SMB/network support

@@ -69,10 +69,16 @@ def render_document_explorer():
             _ingestion_status["error"] = None
             st.rerun()
 
-    # Get vector store stats
+    # Get vector store stats (with timeout to prevent hanging)
     try:
         vector_store = get_vector_store()
-        stats = vector_store.get_collection_stats()
+        # Just get basic count, don't compute expensive stats
+        doc_count = vector_store.collection.count()
+        stats = {
+            "document_count": doc_count,
+            "collection_name": vector_store.collection.name,
+            "doc_types": {}  # Skip expensive doc_types computation
+        }
     except Exception as e:
         st.error(f"Error loading vector store: {e}")
         logger.error(f"Error in document explorer: {e}")

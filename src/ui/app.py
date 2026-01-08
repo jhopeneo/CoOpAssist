@@ -107,20 +107,15 @@ def render_sidebar():
 
         st.markdown("---")
 
-        # Quick stats
+        # Quick stats (fast count only)
         try:
             from src.core.vector_store import get_vector_store
 
             vector_store = get_vector_store()
-            stats = vector_store.get_collection_stats()
+            doc_count = vector_store.collection.count()
 
             st.subheader("Database Stats")
-            st.metric("Total Documents", stats["document_count"])
-
-            if stats.get("doc_types"):
-                with st.expander("Document Types"):
-                    for doc_type, count in stats["doc_types"].items():
-                        st.text(f"{doc_type}: {count}")
+            st.metric("Total Documents", doc_count)
 
         except Exception as e:
             st.warning("Database not initialized")
