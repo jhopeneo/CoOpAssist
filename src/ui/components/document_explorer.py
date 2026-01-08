@@ -77,7 +77,8 @@ def render_document_explorer():
         stats = {
             "document_count": doc_count,
             "collection_name": vector_store.collection.name,
-            "doc_types": {}  # Skip expensive doc_types computation
+            "doc_types": {},  # Skip expensive doc_types computation
+            "persist_directory": vector_store.persist_directory
         }
     except Exception as e:
         st.error(f"Error loading vector store: {e}")
