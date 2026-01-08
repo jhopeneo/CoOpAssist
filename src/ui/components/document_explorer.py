@@ -30,20 +30,18 @@ def render_document_explorer():
     """Render the document explorer interface."""
     st.header("📁 Document Explorer")
 
-    # Show ingestion status banner if running
-    if _ingestion_status["running"]:
-        elapsed = int(time.time() - _ingestion_status["started_at"]) if _ingestion_status["started_at"] else 0
+    # Show ingestion status banner if running (no auto-refresh)
+    if _ingestion_status.get("running", False):
+        elapsed = int(time.time() - _ingestion_status.get("started_at", time.time()))
         elapsed_str = f"{elapsed // 60}m {elapsed % 60}s" if elapsed > 60 else f"{elapsed}s"
 
         st.info(
-            f"🔄 **Ingestion in progress** (running for {elapsed_str})\n\n"
-            f"{_ingestion_status['message']}\n\n"
-            f"You can navigate away - this process runs in the background."
+            f"🔄 **Ingestion in progress** ({elapsed_str})\n\n"
+            f"{_ingestion_status.get('message', 'Processing...')}\n\n"
+            f"Manually refresh this page to see updated progress."
         )
 
-        # Auto-refresh every 3 seconds while ingestion is running
-        time.sleep(1)
-        st.rerun()
+        # Removed auto-refresh to prevent UI freezes
 
     # Show completion message if just finished
     elif _ingestion_status["stats"]:
