@@ -1,6 +1,7 @@
 """
 Word document loader for QmanAssist.
 Uses python-docx to extract text, tables, and structure from .docx files.
+Uses docx2txt for legacy .doc file support.
 Supports both local files and SMB network shares.
 """
 
@@ -11,6 +12,7 @@ import docx
 from docx.document import Document as DocxDocument
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+import docx2txt
 import smbclient
 import io
 
@@ -18,27 +20,49 @@ from .base_loader import BaseDocumentLoader, Document
 
 
 class WordDocumentLoader(BaseDocumentLoader):
-    """Loader for Microsoft Word .docx documents."""
+    """Loader for Microsoft Word documents (.doc and .docx)."""
 
     def __init__(self, file_path: Path, preserve_structure: bool = True):
         """Initialize Word document loader.
 
         Args:
-            file_path: Path to .docx file.
+            file_path: Path to .doc or .docx file.
             preserve_structure: Whether to preserve document structure (headings, paragraphs).
+                Note: Structure preservation only works for .docx files.
         """
         super().__init__(file_path)
         self.preserve_structure = preserve_structure
 
     def get_supported_extensions(self) -> List[str]:
         """Get supported file extensions."""
-        return [".docx", ".DOCX"]
+        return [".doc", ".docx", ".DOC", ".DOCX"]
 
     def load(self) -> List[Document]:
         """Load Word document and extract content.
 
         Returns:
             List containing a single Document object with full document content.
+        """
+        try:
+            # Check file extension to determine which method to use
+            extension = self.file_path.suffix.lower()
+
+            if extension == ".doc":
+                # Use docx2txt for legacy .doc files (text extraction only)
+                return self._load_doc()
+            else:
+                # Use python-docx for .docx files (full structure)
+                return self._load_docx()
+
+        except Exception as e:
+            logger.error(f"Error loading Word document {self.file_path}: {e}")
+            raise
+
+    def _load_docx(self) -> List[Document]:
+        """Load .docx file with full structure preservation.
+
+        Returns:
+            List containing a single Document object.
         """
         try:
             # Check if it's an SMB path
@@ -121,7 +145,56 @@ class WordDocumentLoader(BaseDocumentLoader):
             return documents
 
         except Exception as e:
-            logger.error(f"Error loading Word document {self.file_path}: {e}")
+            logger.error(f"Error loading .docx document {self.file_path}: {e}")
+            raise
+
+    def _load_doc(self) -> List[Document]:
+        """Load legacy .doc file using docx2txt (text extraction only).
+
+        Returns:
+            List containing a single Document object.
+        """
+        try:
+            base_metadata = self._get_base_metadata()
+            base_metadata["doc_type"] = "doc"
+
+            # Check if it's an SMB path
+            path_str = str(self.file_path)
+            if path_str.startswith("//") or path_str.startswith("\\\\"):
+                # Read from SMB into memory, then extract text
+                smb_path = path_str.replace("//", "\\\\").replace("/", "\\")
+                with smbclient.open_file(smb_path, mode="rb") as smb_file:
+                    # docx2txt needs a file path, so we'll write to temp and read
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp:
+                        tmp.write(smb_file.read())
+                        tmp_path = tmp.name
+
+                    try:
+                        content = docx2txt.process(tmp_path)
+                    finally:
+                        # Clean up temp file
+                        import os
+                        os.unlink(tmp_path)
+            else:
+                # Local file - direct extraction
+                content = docx2txt.process(str(self.file_path))
+
+            # Clean the extracted text
+            content = self._clean_text(content)
+
+            if not content or not content.strip():
+                logger.warning(f"No text content extracted from {self.file_path.name}")
+                content = "[Empty document]"
+
+            documents = [Document(content=content, metadata=base_metadata)]
+
+            logger.info(f"Loaded legacy .doc document {self.file_path.name}")
+
+            return documents
+
+        except Exception as e:
+            logger.error(f"Error loading .doc document {self.file_path}: {e}")
             raise
 
     def _extract_table(self, table: Table) -> str:

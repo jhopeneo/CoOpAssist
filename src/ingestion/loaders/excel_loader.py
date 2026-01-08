@@ -36,7 +36,7 @@ class ExcelLoader(BaseDocumentLoader):
 
     def get_supported_extensions(self) -> List[str]:
         """Get supported file extensions."""
-        return [".xlsx", ".xls", ".csv", ".XLSX", ".XLS", ".CSV"]
+        return [".xlsx", ".xls", ".xlsm", ".csv", ".XLSX", ".XLS", ".XLSM", ".CSV"]
 
     def load(self) -> List[Document]:
         """Load Excel/CSV file and extract data.
