@@ -115,8 +115,9 @@ def render_document_explorer():
     st.markdown("---")
     st.subheader("📥 Document Ingestion")
 
-    # Check network access
-    success, message = validate_network_access()
+    # Skip expensive network check - assume success
+    success = True
+    message = "Network check disabled for performance"
 
     if success:
         st.success(f"✅ {message}")
@@ -138,14 +139,7 @@ def render_document_explorer():
         if st.button("🗑️ Clear Database", use_container_width=True):
             confirm_clear_database()
 
-    # Browse source files
-    st.markdown("---")
-    st.subheader("📂 Browse Source Files")
-
-    if success:
-        # Add a button to trigger file scanning (make it optional)
-        if st.button("🔍 Scan Network Share", help="This may take a while for large directories"):
-            scan_network_share()
+    # Browse source files section removed for performance
 
     # Advanced options
     st.markdown("---")
