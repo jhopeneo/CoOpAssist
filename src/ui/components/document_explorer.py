@@ -6,15 +6,68 @@ Browse and manage indexed documents.
 import streamlit as st
 from pathlib import Path
 from loguru import logger
+import threading
+import time
+from datetime import datetime
 
 from src.core.vector_store import get_vector_store
 from src.ingestion.pipeline import IngestionPipeline
 from src.utils.network_utils import NetworkPathAccessor, validate_network_access
 
 
+# Global variable to track background ingestion
+_ingestion_status = {
+    "running": False,
+    "progress": 0,
+    "message": "",
+    "stats": None,
+    "error": None,
+    "started_at": None,
+}
+
+
 def render_document_explorer():
     """Render the document explorer interface."""
     st.header("📁 Document Explorer")
+
+    # Show ingestion status banner if running
+    if _ingestion_status["running"]:
+        elapsed = int(time.time() - _ingestion_status["started_at"]) if _ingestion_status["started_at"] else 0
+        elapsed_str = f"{elapsed // 60}m {elapsed % 60}s" if elapsed > 60 else f"{elapsed}s"
+
+        st.info(
+            f"🔄 **Ingestion in progress** (running for {elapsed_str})\n\n"
+            f"{_ingestion_status['message']}\n\n"
+            f"You can navigate away - this process runs in the background."
+        )
+
+        # Auto-refresh every 3 seconds while ingestion is running
+        time.sleep(1)
+        st.rerun()
+
+    # Show completion message if just finished
+    elif _ingestion_status["stats"]:
+        stats = _ingestion_status["stats"]
+        st.success(
+            f"✅ **Ingestion complete!**\n\n"
+            f"- Total files: {stats['total_files']}\n"
+            f"- Successfully processed: {stats['successful']}\n"
+            f"- Failed: {stats['failed']}\n"
+            f"- Skipped (existing): {stats['skipped']}\n"
+            f"- Total chunks added: {stats['total_chunks']}"
+        )
+
+        if st.button("Clear this message"):
+            _ingestion_status["stats"] = None
+            st.rerun()
+
+    # Show error if ingestion failed
+    elif _ingestion_status["error"]:
+        st.error(f"❌ Ingestion failed: {_ingestion_status['error']}")
+
+        if st.button("Clear error message"):
+            _ingestion_status["error"] = None
+            st.rerun()
 
     # Get vector store stats
     try:
@@ -69,7 +122,11 @@ def render_document_explorer():
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("🔄 Ingest Documents", use_container_width=True, type="primary"):
+        # Disable button if ingestion is already running
+        button_disabled = _ingestion_status["running"]
+        button_label = "🔄 Ingestion Running..." if button_disabled else "🔄 Ingest Documents"
+
+        if st.button(button_label, use_container_width=True, type="primary", disabled=button_disabled):
             run_ingestion()
 
     with col2:
@@ -81,52 +138,9 @@ def render_document_explorer():
     st.subheader("📂 Browse Source Files")
 
     if success:
-        try:
-            accessor = NetworkPathAccessor()
-            doc_path = accessor.get_document_path()
-
-            # List available documents
-            documents = accessor.list_documents(
-                path=doc_path, extensions=[".pdf", ".docx", ".xlsx", ".csv"]
-            )
-
-            if documents:
-                st.info(f"Found {len(documents)} documents in Q:\\ drive")
-
-                # Group by subdirectory
-                by_dir = {}
-                for doc in documents:
-                    rel_path = doc.relative_to(doc_path)
-                    dir_name = rel_path.parts[0] if len(rel_path.parts) > 1 else "Root"
-
-                    if dir_name not in by_dir:
-                        by_dir[dir_name] = []
-                    by_dir[dir_name].append(doc)
-
-                # Display by directory
-                for dir_name, docs in sorted(by_dir.items()):
-                    with st.expander(f"📁 {dir_name} ({len(docs)} files)"):
-                        for doc in sorted(docs):
-                            file_info = accessor.get_file_info(doc)
-
-                            col1, col2, col3 = st.columns([3, 1, 1])
-
-                            with col1:
-                                st.text(f"📄 {doc.name}")
-
-                            with col2:
-                                st.text(f"{file_info.get('size_mb', 0)} MB")
-
-                            with col3:
-                                doc_type = file_info.get("extension", "").upper()
-                                st.text(doc_type)
-
-            else:
-                st.warning("No documents found in Q:\\ drive")
-
-        except Exception as e:
-            st.error(f"Error browsing documents: {e}")
-            logger.error(f"Error browsing source files: {e}")
+        # Add a button to trigger file scanning (make it optional)
+        if st.button("🔍 Scan Network Share", help="This may take a while for large directories"):
+            scan_network_share()
 
     # Advanced options
     st.markdown("---")
@@ -147,44 +161,64 @@ def render_document_explorer():
             inspect_collection()
 
 
+def _background_ingestion_worker():
+    """Background worker that performs the actual ingestion."""
+    global _ingestion_status
+
+    try:
+        _ingestion_status["message"] = "Initializing ingestion pipeline..."
+        pipeline = IngestionPipeline(skip_existing=True)
+
+        _ingestion_status["message"] = "Scanning documents from Q:\\ drive..."
+        logger.info("Starting background ingestion")
+
+        # Run ingestion
+        stats = pipeline.ingest_directory()
+
+        # Update status with results
+        _ingestion_status["running"] = False
+        _ingestion_status["stats"] = stats
+        _ingestion_status["message"] = "Ingestion complete!"
+
+        logger.info(f"Background ingestion completed: {stats}")
+
+    except Exception as e:
+        _ingestion_status["running"] = False
+        _ingestion_status["error"] = str(e)
+        _ingestion_status["message"] = "Ingestion failed"
+        logger.error(f"Background ingestion error: {e}")
+        logger.exception("Full traceback:")
+
+
 def run_ingestion():
-    """Run document ingestion process."""
-    with st.spinner("Ingesting documents from Q:\\ drive..."):
-        try:
-            pipeline = IngestionPipeline(skip_existing=True)
+    """Start document ingestion in background thread."""
+    global _ingestion_status
 
-            # Create progress placeholder
-            progress_text = st.empty()
-            progress_bar = st.progress(0)
+    # Check if already running
+    if _ingestion_status["running"]:
+        st.warning("Ingestion is already running!")
+        return
 
-            progress_text.text("Starting ingestion...")
+    # Reset status
+    _ingestion_status.update({
+        "running": True,
+        "progress": 0,
+        "message": "Starting ingestion...",
+        "stats": None,
+        "error": None,
+        "started_at": time.time(),
+    })
 
-            # Run ingestion (simplified - no real-time progress yet)
-            stats = pipeline.ingest_directory()
+    # Start background thread
+    thread = threading.Thread(target=_background_ingestion_worker, daemon=True)
+    thread.start()
 
-            # Update progress
-            progress_bar.progress(100)
-            progress_text.text("Ingestion complete!")
+    st.success("✅ Ingestion started in background! You can navigate away from this page.")
+    logger.info("Started background ingestion thread")
 
-            # Display results
-            st.success(
-                f"✅ Ingestion complete!\n\n"
-                f"- Total files: {stats['total_files']}\n"
-                f"- Successfully processed: {stats['successful']}\n"
-                f"- Failed: {stats['failed']}\n"
-                f"- Skipped (existing): {stats['skipped']}\n"
-                f"- Total chunks added: {stats['total_chunks']}"
-            )
-
-            logger.info(f"Ingestion completed via UI: {stats}")
-
-            # Refresh page
-            st.rerun()
-
-        except Exception as e:
-            st.error(f"Error during ingestion: {e}")
-            logger.error(f"Ingestion error: {e}")
-            logger.exception("Full traceback:")
+    # Rerun to show the status banner
+    time.sleep(0.5)
+    st.rerun()
 
 
 def confirm_clear_database():
@@ -244,6 +278,51 @@ def reindex_specific_file(file_path: str):
     except Exception as e:
         st.error(f"Error re-indexing file: {e}")
         logger.error(f"Re-index error: {e}")
+
+
+def scan_network_share():
+    """Scan network share for available documents (on-demand)."""
+    with st.spinner("Scanning network share..."):
+        try:
+            accessor = NetworkPathAccessor()
+            doc_path = accessor.get_document_path()
+
+            # List available documents (no metadata fetching)
+            documents = accessor.list_documents(
+                path=doc_path, extensions=[".pdf", ".docx", ".xlsx", ".csv"]
+            )
+
+            if documents:
+                st.success(f"✅ Found {len(documents)} documents in network share")
+
+                # Group by subdirectory (top-level only)
+                by_dir = {}
+                for doc in documents:
+                    rel_path = doc.relative_to(doc_path)
+                    dir_name = rel_path.parts[0] if len(rel_path.parts) > 1 else "Root"
+
+                    if dir_name not in by_dir:
+                        by_dir[dir_name] = []
+                    by_dir[dir_name].append(doc)
+
+                # Display directory summary (no individual file details)
+                st.markdown("### Directory Summary")
+                for dir_name, docs in sorted(by_dir.items()):
+                    # Count file types
+                    types = {}
+                    for doc in docs:
+                        ext = doc.suffix.lower()
+                        types[ext] = types.get(ext, 0) + 1
+
+                    type_str = ", ".join([f"{ext}: {count}" for ext, count in types.items()])
+                    st.text(f"📁 {dir_name}: {len(docs)} files ({type_str})")
+
+            else:
+                st.warning("No documents found in network share")
+
+        except Exception as e:
+            st.error(f"Error scanning network share: {e}")
+            logger.error(f"Error browsing source files: {e}")
 
 
 def inspect_collection():
