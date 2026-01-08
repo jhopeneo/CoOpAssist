@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from loguru import logger
 from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import multiprocessing
 
 from config.settings import get_settings
@@ -41,14 +41,34 @@ def _process_single_file(file_path: Path, skip_existing: bool) -> Dict[str, Any]
     from src.ingestion.chunkers.table_chunker import TableChunker
     from src.ingestion.chunkers.metadata_enricher import MetadataEnricher
     from src.utils.network_utils import NetworkPathAccessor
+    from config.settings import get_settings
+    import smbclient
+    from smbclient import register_session
 
     try:
+        # Initialize SMB session for this worker process
+        # Each worker process needs its own SMB session registration
+        settings = get_settings()
+        if settings.is_network_path():
+            path_str = settings.qmanuals_network_path
+            parts = path_str.replace("\\\\", "//").strip("/").split("/")
+            server = parts[0] if parts else "neonas-01"
+
+            if settings.smb_username and settings.smb_password:
+                username_with_domain = f"{settings.smb_domain}\\{settings.smb_username}" if settings.smb_domain else settings.smb_username
+                try:
+                    register_session(server, username=username_with_domain, password=settings.smb_password)
+                except Exception:
+                    # Session might already be registered, ignore error
+                    pass
         # Loader registry
         loaders = {
             ".pdf": PDFLoader,
+            ".doc": WordDocumentLoader,
             ".docx": WordDocumentLoader,
             ".xlsx": ExcelLoader,
             ".xls": ExcelLoader,
+            ".xlsm": ExcelLoader,
             ".csv": ExcelLoader,
         }
 
@@ -123,9 +143,11 @@ class IngestionPipeline:
         # Loader registry
         self.loaders = {
             ".pdf": PDFLoader,
+            ".doc": WordDocumentLoader,
             ".docx": WordDocumentLoader,
             ".xlsx": ExcelLoader,
             ".xls": ExcelLoader,
+            ".xlsm": ExcelLoader,
             ".csv": ExcelLoader,
         }
 
@@ -235,7 +257,9 @@ class IngestionPipeline:
         batch_size = self.settings.ingestion_batch_size
         all_docs_to_add = []
 
-        with ProcessPoolExecutor(max_workers=self.workers) as executor:
+        # Use ThreadPoolExecutor instead of ProcessPoolExecutor for better SMB/network support
+        # Thread-based parallelism works better with network I/O and shared SMB sessions
+        with ThreadPoolExecutor(max_workers=self.workers) as executor:
             # Submit all tasks
             future_to_path = {
                 executor.submit(_process_single_file, file_path, self.skip_existing): file_path
