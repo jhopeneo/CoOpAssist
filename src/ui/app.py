@@ -48,7 +48,22 @@ def initialize_session_state():
 
 def render_header():
     """Render application header."""
-    # Removed ingestion status banner - was causing UI freezes
+    # Show ingestion status banner (non-blocking check)
+    try:
+        from src.ui.components.document_explorer import _ingestion_status
+        import time
+
+        if _ingestion_status.get("running", False):
+            elapsed = int(time.time() - _ingestion_status.get("started_at", time.time()))
+            elapsed_str = f"{elapsed // 60}m {elapsed % 60}s" if elapsed > 60 else f"{elapsed}s"
+
+            st.info(
+                f"🔄 **Ingestion running** ({elapsed_str}) - Check Documents page for details",
+                icon="ℹ️"
+            )
+    except Exception:
+        pass  # Silently fail if status check has issues
+
     col1, col2 = st.columns([3, 1])
 
     with col1:
