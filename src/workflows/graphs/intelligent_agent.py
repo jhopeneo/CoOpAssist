@@ -36,6 +36,7 @@ class IntelligentAgent:
         Args:
             top_k: Number of chunks for semantic search.
         """
+        self.top_k = top_k
         self.llm = create_llm(temperature=0.3)
         self.metadata_tool = MetadataQueryTool()
         self.semantic_tool = SemanticSearchTool(top_k=top_k)
@@ -44,7 +45,7 @@ class IntelligentAgent:
         # Build the agent graph
         self.graph = self._build_graph()
 
-        logger.info("IntelligentAgent initialized with tool routing")
+        logger.info(f"IntelligentAgent initialized with tool routing (top_k={top_k})")
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph workflow.
@@ -238,8 +239,9 @@ Respond with ONLY the JSON, nothing else."""
             state["tool_name"] = "semantic_search"
             state["tool_params"] = {
                 "query": query,
-                "top_k": 15,  # More context for better answers
-                "category": params.get("filter_term", None) if params.get("filter_term") else None,
+                "top_k": self.top_k,  # Use user-configured top_k from UI slider
+                # Don't filter by category for semantic search - let embeddings find relevant docs
+                "category": None,
             }
 
         logger.info(f"Routed to tool: {state['tool_name']}")
