@@ -10,6 +10,7 @@ from loguru import logger
 
 from src.workflows.graphs.simple_rag import SimpleRAGWorkflow
 from src.workflows.graphs.multi_step_rag import MultiStepRAGWorkflow
+from src.workflows.graphs.intelligent_agent import IntelligentAgent
 
 
 def render_chat_interface():
@@ -22,8 +23,8 @@ def render_chat_interface():
     with col1:
         workflow_type = st.selectbox(
             "Workflow",
-            ["Simple RAG", "Multi-Step RAG"],
-            help="Simple for quick questions, Multi-Step for complex queries",
+            ["Intelligent Agent (Recommended)", "Simple RAG", "Multi-Step RAG"],
+            help="Intelligent Agent automatically routes queries. Simple for quick questions, Multi-Step for complex queries",
         )
 
     with col2:
@@ -113,15 +114,17 @@ def render_chat_interface():
             with st.spinner("Searching quality documentation..."):
                 try:
                     # Select workflow
-                    if workflow_type == "Multi-Step RAG":
+                    if workflow_type == "Intelligent Agent (Recommended)":
+                        workflow = IntelligentAgent(top_k=top_k)
+                        result = workflow.run(prompt)
+                    elif workflow_type == "Multi-Step RAG":
                         workflow = MultiStepRAGWorkflow(top_k=top_k)
+                        result = workflow.run(prompt)
                     else:
                         workflow = SimpleRAGWorkflow(
                             use_query_expansion=False, top_k=top_k
                         )
-
-                    # Run workflow
-                    result = workflow.run(prompt)
+                        result = workflow.run(prompt)
 
                     # Display answer
                     st.markdown(result["answer"])
