@@ -254,8 +254,9 @@ class IngestionPipeline:
         logger.info(f"Processing {len(documents)} documents with {self.workers} workers")
 
         # Process documents in batches
-        # Reduced from 50 to 10 to avoid OpenAI embedding token limits (300k tokens/request)
-        batch_size = 10  # Conservative batch size to avoid "max_tokens_per_request" errors
+        # Reduced to 1 to avoid OpenAI embedding token limits (300k tokens/request)
+        # Large PDFs can produce millions of tokens even with a single document
+        batch_size = 1  # Very conservative to avoid "max_tokens_per_request" errors
         all_docs_to_add = []
 
         # Use ThreadPoolExecutor instead of ProcessPoolExecutor for better SMB/network support
@@ -284,12 +285,17 @@ class IngestionPipeline:
                         else:
                             stats["failed"] += 1
 
-                        # Batch add to vector store
+                        # Batch add to vector store with error handling
                         if len(all_docs_to_add) >= batch_size:
-                            chunks_added = len(all_docs_to_add)
-                            self.vector_store.add_documents(all_docs_to_add)
-                            stats["total_chunks"] += chunks_added
-                            all_docs_to_add = []
+                            try:
+                                self._add_documents_with_retry(all_docs_to_add)
+                                stats["total_chunks"] += len(all_docs_to_add)
+                                all_docs_to_add = []
+                            except Exception as e:
+                                logger.error(f"Failed to add batch after retries: {e}")
+                                # Mark as failed and continue
+                                stats["failed"] += 1
+                                all_docs_to_add = []
 
                     except Exception as e:
                         logger.error(f"Error processing {file_path}: {e}")
@@ -299,9 +305,12 @@ class IngestionPipeline:
 
         # Add remaining documents
         if all_docs_to_add:
-            chunks_added = len(all_docs_to_add)
-            self.vector_store.add_documents(all_docs_to_add)
-            stats["total_chunks"] += chunks_added
+            try:
+                self._add_documents_with_retry(all_docs_to_add)
+                stats["total_chunks"] += len(all_docs_to_add)
+            except Exception as e:
+                logger.error(f"Failed to add final batch: {e}")
+                stats["failed"] += 1
 
         logger.info(
             f"Parallel ingestion complete: {stats['successful']} successful, "
@@ -310,6 +319,62 @@ class IngestionPipeline:
         )
 
         return stats
+
+    def _add_documents_with_retry(self, documents: List[Document]) -> List[str]:
+        """Add documents to vector store with retry logic for token limit errors.
+
+        If we hit the token limit, we split the batch in half and retry.
+
+        Args:
+            documents: List of Document objects to add.
+
+        Returns:
+            List of document IDs added.
+
+        Raises:
+            Exception: If the batch cannot be added even after splitting.
+        """
+        if not documents:
+            return []
+
+        try:
+            return self.vector_store.add_documents(documents)
+        except Exception as e:
+            error_str = str(e)
+
+            # Check if it's a token limit error
+            if "max_tokens_per_request" in error_str or "Requested" in error_str:
+                num_docs = len(documents)
+
+                # If we only have 1 document and it still fails, we need to split its chunks
+                if num_docs == 1:
+                    logger.warning(
+                        f"Single document batch too large ({num_docs} chunks). "
+                        "Attempting to split chunks..."
+                    )
+                    # This shouldn't happen if we're already batching by document,
+                    # but if it does, we need to skip this document
+                    logger.error(f"Cannot split further - skipping document with {len(documents[0].content)} chars")
+                    raise Exception(f"Document too large to embed: {error_str}")
+
+                # Split the batch in half and retry
+                mid = num_docs // 2
+                logger.warning(
+                    f"Token limit exceeded. Splitting batch of {num_docs} documents "
+                    f"into {mid} and {num_docs - mid}"
+                )
+
+                first_half = documents[:mid]
+                second_half = documents[mid:]
+
+                # Recursively process each half
+                ids_1 = self._add_documents_with_retry(first_half)
+                ids_2 = self._add_documents_with_retry(second_half)
+
+                return ids_1 + ids_2
+            else:
+                # Not a token limit error, re-raise
+                raise
 
     def ingest_file(self, file_path: Path) -> Dict[str, Any]:
         """Ingest a single file.
@@ -342,8 +407,12 @@ class IngestionPipeline:
                 logger.debug(f"Skipping {file_path.name} - all chunks already exist")
                 return {"status": "skipped", "reason": "already_exists"}
 
-        # 5. Add to vector store
-        doc_ids = self.vector_store.add_documents(enriched_docs)
+        # 5. Add to vector store with retry logic
+        try:
+            doc_ids = self._add_documents_with_retry(enriched_docs)
+        except Exception as e:
+            logger.error(f"Failed to ingest {file_path.name} after retries: {e}")
+            return {"status": "failed", "error": str(e)}
 
         logger.info(
             f"Successfully ingested {file_path.name}: {len(doc_ids)} chunks added"
