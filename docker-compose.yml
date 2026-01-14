@@ -77,9 +77,11 @@ services:
 
     restart: unless-stopped
 
-    # Add host entry for network share resolution
+    # Add host entry for network share and domain controller resolution
     extra_hosts:
       - "neonas-01:192.168.95.35"
+      - "neo-srv-01.neoconhfx.com:192.168.95.24"
+      - "neo-srv-01:192.168.95.24"
 
     # Resource limits - adjust based on your Docker Desktop resources
     deploy:
