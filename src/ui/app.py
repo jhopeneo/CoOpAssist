@@ -18,6 +18,7 @@ from src.utils.logging_config import setup_logging
 from src.ui.components.chat_interface import render_chat_interface
 from src.ui.components.settings_panel import render_settings_panel
 from src.ui.components.document_explorer import render_document_explorer
+from src.ui.components.login import require_authentication, render_user_info
 
 
 # Page configuration
@@ -112,6 +113,9 @@ def render_sidebar():
         # Removed stats from sidebar - was causing slowness
         # Stats now only shown on Documents page
 
+        # User info and logout (if authentication is enabled)
+        render_user_info()
+
         st.markdown("---")
 
         # Footer
@@ -123,6 +127,9 @@ def main():
     """Main application entry point."""
     # Initialize
     initialize_session_state()
+
+    # Check authentication (if enabled)
+    require_authentication()
 
     # Render header
     render_header()

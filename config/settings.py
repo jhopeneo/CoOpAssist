@@ -175,6 +175,81 @@ class Settings(BaseSettings):
         description="Streamlit server address"
     )
 
+    # ==================== Authentication Settings ====================
+    auth_enabled: bool = Field(
+        default=False,
+        description="Enable authentication (LDAP/AD)"
+    )
+
+    ldap_server: Optional[str] = Field(
+        default=None,
+        description="LDAP/AD server hostname or IP (e.g., dc.neocon.local)"
+    )
+
+    ldap_port: int = Field(
+        default=636,
+        gt=0,
+        lt=65536,
+        description="LDAP port (389 for LDAP, 636 for LDAPS)"
+    )
+
+    ldap_use_ssl: bool = Field(
+        default=True,
+        description="Use LDAPS (SSL/TLS) for secure connection"
+    )
+
+    ldap_domain: Optional[str] = Field(
+        default=None,
+        description="AD domain name (e.g., NEOCON)"
+    )
+
+    ldap_base_dn: Optional[str] = Field(
+        default=None,
+        description="Base DN for user searches (e.g., DC=neocon,DC=local)"
+    )
+
+    ldap_bind_user: Optional[str] = Field(
+        default=None,
+        description="Service account for LDAP binding (optional, for group lookups)"
+    )
+
+    ldap_bind_password: Optional[str] = Field(
+        default=None,
+        description="Service account password (optional)"
+    )
+
+    ldap_user_search_filter: str = Field(
+        default="(sAMAccountName={username})",
+        description="LDAP search filter for users"
+    )
+
+    ldap_group_search_filter: str = Field(
+        default="(member={user_dn})",
+        description="LDAP search filter for groups"
+    )
+
+    ldap_allowed_groups: Optional[str] = Field(
+        default=None,
+        description="Comma-separated list of AD groups allowed access (e.g., QualityTeam,Admins)"
+    )
+
+    ldap_require_group: bool = Field(
+        default=False,
+        description="Require users to be in one of the allowed groups"
+    )
+
+    ldap_timeout: int = Field(
+        default=10,
+        gt=0,
+        description="LDAP connection timeout in seconds"
+    )
+
+    session_timeout_minutes: int = Field(
+        default=480,
+        gt=0,
+        description="Session timeout in minutes (default 8 hours)"
+    )
+
     # ==================== Validators ====================
     @field_validator("llm_provider")
     @classmethod

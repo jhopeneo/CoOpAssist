@@ -47,6 +47,22 @@ services:
       # Application Settings
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
 
+      # Authentication Settings (LDAP/Active Directory)
+      - AUTH_ENABLED=${AUTH_ENABLED:-false}
+      - LDAP_SERVER=${LDAP_SERVER}
+      - LDAP_PORT=${LDAP_PORT:-636}
+      - LDAP_USE_SSL=${LDAP_USE_SSL:-true}
+      - LDAP_DOMAIN=${LDAP_DOMAIN}
+      - LDAP_BASE_DN=${LDAP_BASE_DN}
+      - LDAP_BIND_USER=${LDAP_BIND_USER}
+      - LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD}
+      - LDAP_USER_SEARCH_FILTER=${LDAP_USER_SEARCH_FILTER:-(sAMAccountName={username})}
+      - LDAP_GROUP_SEARCH_FILTER=${LDAP_GROUP_SEARCH_FILTER:-(member={user_dn})}
+      - LDAP_ALLOWED_GROUPS=${LDAP_ALLOWED_GROUPS}
+      - LDAP_REQUIRE_GROUP=${LDAP_REQUIRE_GROUP:-false}
+      - LDAP_TIMEOUT=${LDAP_TIMEOUT:-10}
+      - SESSION_TIMEOUT_MINUTES=${SESSION_TIMEOUT_MINUTES:-480}
+
     volumes:
       # Persist ChromaDB data
       - chroma_data:/app/data/chroma_db
