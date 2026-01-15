@@ -9,11 +9,17 @@ from loguru import logger
 import threading
 import time
 from datetime import datetime
+import subprocess
+import json
+import os
 
 from src.core.vector_store import get_vector_store
 from src.ingestion.pipeline import IngestionPipeline
 from src.utils.network_utils import NetworkPathAccessor, validate_network_access
 
+
+# Status file for tracking subprocess ingestion
+_status_file = Path("/tmp/coopassist_ingestion_status.json")
 
 # Global variable to track background ingestion
 _ingestion_status = {
@@ -23,12 +29,38 @@ _ingestion_status = {
     "stats": None,
     "error": None,
     "started_at": None,
+    "pid": None,
 }
+
+
+def _check_ingestion_status():
+    """Check if subprocess ingestion is running by reading status file."""
+    global _ingestion_status
+
+    # Check if status file exists and is recent (updated in last 10 seconds)
+    if _status_file.exists():
+        try:
+            with open(_status_file, 'r') as f:
+                file_status = json.load(f)
+
+            # Check if process is still running
+            if file_status.get("pid"):
+                try:
+                    os.kill(file_status["pid"], 0)  # Check if process exists
+                    _ingestion_status.update(file_status)
+                except OSError:
+                    # Process doesn't exist anymore
+                    _ingestion_status["running"] = False
+        except Exception as e:
+            logger.debug(f"Error reading status file: {e}")
 
 
 def render_document_explorer():
     """Render the document explorer interface."""
     st.header("📁 Document Explorer")
+
+    # Check subprocess ingestion status
+    _check_ingestion_status()
 
     # Show ingestion status banner if running (no auto-refresh)
     if _ingestion_status.get("running", False):
@@ -190,34 +222,51 @@ def _background_ingestion_worker():
 
 
 def run_ingestion():
-    """Start document ingestion in background thread."""
+    """Start document ingestion as separate subprocess."""
     global _ingestion_status
 
     # Check if already running
+    _check_ingestion_status()
     if _ingestion_status["running"]:
         st.warning("Ingestion is already running!")
         return
 
-    # Reset status
-    _ingestion_status.update({
-        "running": True,
-        "progress": 0,
-        "message": "Starting ingestion...",
-        "stats": None,
-        "error": None,
-        "started_at": time.time(),
-    })
+    try:
+        # Start ingestion as subprocess
+        script_path = Path(__file__).parent.parent.parent.parent / "scripts" / "ingest_documents.py"
+        process = subprocess.Popen(
+            ["python3", str(script_path), "--log-level", "INFO"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True  # Detach from parent
+        )
 
-    # Start background thread
-    thread = threading.Thread(target=_background_ingestion_worker, daemon=True)
-    thread.start()
+        # Write initial status to file
+        status = {
+            "running": True,
+            "progress": 0,
+            "message": "Starting ingestion...",
+            "stats": None,
+            "error": None,
+            "started_at": time.time(),
+            "pid": process.pid,
+        }
 
-    st.success("✅ Ingestion started in background! You can navigate away from this page.")
-    logger.info("Started background ingestion thread")
+        with open(_status_file, 'w') as f:
+            json.dump(status, f)
 
-    # Rerun to show the status banner
-    time.sleep(0.5)
-    st.rerun()
+        _ingestion_status.update(status)
+
+        st.success(f"✅ Ingestion started as separate process (PID: {process.pid})! You can navigate away or even close this page.")
+        logger.info(f"Started ingestion subprocess with PID: {process.pid}")
+
+        # Rerun to show the status banner
+        time.sleep(0.5)
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Failed to start ingestion: {e}")
+        logger.error(f"Error starting ingestion subprocess: {e}")
 
 
 def confirm_clear_database():
