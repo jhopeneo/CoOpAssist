@@ -234,12 +234,29 @@ def run_ingestion():
     try:
         # Start ingestion as subprocess
         script_path = Path(__file__).parent.parent.parent.parent / "scripts" / "ingest_documents.py"
+
+        # Redirect output to log files to prevent pipe blocking
+        log_dir = Path("/app/logs")
+        log_dir.mkdir(exist_ok=True)
+        stdout_log = log_dir / "ingestion_stdout.log"
+        stderr_log = log_dir / "ingestion_stderr.log"
+
+        # Open log files (will be closed by subprocess when it exits)
+        out_f = open(stdout_log, 'w')
+        err_f = open(stderr_log, 'w')
+
         process = subprocess.Popen(
             ["python3", str(script_path), "--log-level", "INFO"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True  # Detach from parent
+            stdout=out_f,
+            stderr=err_f,
+            start_new_session=True,  # Detach from parent
+            cwd="/app",  # Set working directory
+            close_fds=False  # Let subprocess inherit file descriptors
         )
+
+        # Close file descriptors in parent process
+        out_f.close()
+        err_f.close()
 
         # Write initial status to file
         status = {
