@@ -112,7 +112,7 @@ class ExcelLoader(BaseDocumentLoader):
 
         for sheet_name in excel_file.sheet_names:
             try:
-                df = pd.read_excel(self.file_path, sheet_name=sheet_name)
+                df = excel_file.parse(sheet_name)
 
                 sheet_metadata = base_metadata.copy()
                 sheet_metadata["sheet_name"] = sheet_name
@@ -176,7 +176,7 @@ class ExcelLoader(BaseDocumentLoader):
                 "row_end": end_row + 2,
                 "row_count": len(chunk_df),
                 "column_count": len(chunk_df.columns),
-                "columns": list(chunk_df.columns),
+                "columns": ", ".join(str(col) for col in chunk_df.columns),  # Convert to comma-separated string
                 "chunk_index": chunk_idx,
                 "total_chunks": num_chunks,
             })

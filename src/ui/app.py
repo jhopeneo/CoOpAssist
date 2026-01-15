@@ -1,6 +1,6 @@
 """
-QmanAssist - Main Streamlit Application
-AI-powered quality documentation assistant for Neocon International.
+CoOpAssist - Main Streamlit Application
+AI-powered documentation assistant for Student Testing and Product Research at Neocon International.
 """
 
 import sys
@@ -23,7 +23,7 @@ from src.ui.components.login import require_authentication, render_user_info
 
 # Page configuration
 st.set_page_config(
-    page_title="QmanAssist - Quality Documentation Assistant",
+    page_title="CoOpAssist - Student Testing & Product Research",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -43,7 +43,7 @@ def initialize_session_state():
 
     if "initialized" not in st.session_state:
         setup_logging(log_level=st.session_state.settings.log_level)
-        logger.info("QmanAssist application started")
+        logger.info("CoOpAssist application started")
         st.session_state.initialized = True
 
 
@@ -68,8 +68,8 @@ def render_header():
     col1, col2 = st.columns([3, 1])
 
     with col1:
-        st.title("📚 QmanAssist")
-        st.caption("AI-Powered Quality Documentation Assistant | Neocon International")
+        st.title("📚 CoOpAssist")
+        st.caption("AI-Powered Documentation Assistant for Student Testing & Product Research | Neocon International")
 
     with col2:
         # Status indicator (removed DB check to improve speed)
@@ -86,8 +86,8 @@ def render_sidebar():
         # Branding header
         st.markdown("""
         <div style='text-align: center; padding: 10px 0;'>
-            <h1 style='color: #1f77b4; margin: 0; font-size: 28px;'>📚 QmanAssist</h1>
-            <p style='color: #666; margin: 5px 0 0 0; font-size: 12px;'>Quality Documentation Assistant</p>
+            <h1 style='color: #1f77b4; margin: 0; font-size: 28px;'>📚 CoOpAssist</h1>
+            <p style='color: #666; margin: 5px 0 0 0; font-size: 12px;'>Student Testing & Product Research</p>
         </div>
         """, unsafe_allow_html=True)
 

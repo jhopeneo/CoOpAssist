@@ -1,5 +1,5 @@
 """
-Chat interface component for QmanAssist.
+Chat interface component for CoOpAssist.
 Handles the conversational interface for asking questions.
 """
 
@@ -15,7 +15,7 @@ from src.workflows.graphs.intelligent_agent import IntelligentAgent
 
 def render_chat_interface():
     """Render the main chat interface."""
-    st.header("💬 Chat with Quality Documentation")
+    st.header("💬 Chat with Student Testing & Product Research Documentation")
 
     # Chat configuration
     col1, col2, col3 = st.columns([2, 2, 1])
@@ -52,23 +52,23 @@ def render_chat_interface():
             with st.chat_message("assistant", avatar="📚"):
                 st.markdown(
                     """
-                    👋 **Welcome to QmanAssist!**
+                    👋 **Welcome to CoOpAssist!**
 
-                    I'm here to help you find information across **all your quality documentation**.
+                    I'm here to help you find information across **all your Student Testing and Product Research documentation**.
                     The system automatically searches through all documents in the database.
 
                     Ask me anything about:
-                    - Quality procedures and standards
-                    - Documentation requirements
-                    - Process guidelines
-                    - Compliance information
-                    - Material specifications
-                    - Ford/IATF requirements
+                    - Student testing procedures and protocols
+                    - Product research data and reports
+                    - Test results and analysis
+                    - Research methodologies
+                    - Product specifications
+                    - Testing standards and requirements
 
                     **Try asking:**
-                    - "What are the quality control procedures?"
-                    - "What are the Ford IATF requirements?"
-                    - "Find information about environmental procedures"
+                    - "What are the student testing procedures?"
+                    - "Find product research reports from recent studies"
+                    - "What testing standards are we following?"
                     """
                 )
         else:
@@ -91,7 +91,7 @@ def render_chat_interface():
                                 )
 
     # Chat input
-    if prompt := st.chat_input("Ask a question about quality documentation..."):
+    if prompt := st.chat_input("Ask a question about student testing or product research..."):
         # Validate settings
         if not st.session_state.settings.validate_api_key():
             st.error(
@@ -111,7 +111,7 @@ def render_chat_interface():
 
         # Generate response
         with st.chat_message("assistant", avatar="📚"):
-            with st.spinner("Searching quality documentation..."):
+            with st.spinner("Searching student testing & product research documentation..."):
                 try:
                     # Select workflow
                     if workflow_type == "Intelligent Agent (Recommended)":
@@ -185,7 +185,7 @@ def export_conversation():
         return
 
     # Build conversation text
-    lines = ["QmanAssist Chat Export", "=" * 60, ""]
+    lines = ["CoOpAssist Chat Export", "=" * 60, ""]
     lines.append(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append(f"Model: {st.session_state.settings.llm_provider}")
     lines.append("")
@@ -193,7 +193,7 @@ def export_conversation():
     lines.append("")
 
     for i, message in enumerate(st.session_state.messages, start=1):
-        role = "You" if message["role"] == "user" else "QmanAssist"
+        role = "You" if message["role"] == "user" else "CoOpAssist"
         lines.append(f"[{role}]")
         lines.append(message["content"])
 
@@ -216,6 +216,6 @@ def export_conversation():
     st.download_button(
         label="📥 Download Chat History",
         data=conversation_text,
-        file_name=f"qmanassist_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        file_name=f"coopassist_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
         mime="text/plain",
     )

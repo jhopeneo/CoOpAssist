@@ -1,13 +1,13 @@
 version: '3.8'
 
 services:
-  qmanassist:
+  coopassist:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: qmanassist
+    container_name: coopassist
     ports:
-      - "8501:8501"
+      - "8502:8501"
     environment:
       # LLM Provider Configuration
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
@@ -33,8 +33,8 @@ services:
       - SMB_DOMAIN=${SMB_DOMAIN}
 
       # ChromaDB Configuration
-      - CHROMA_DB_PATH=/app/data/chroma_db
-      - CHROMA_COLLECTION_NAME=${CHROMA_COLLECTION_NAME:-qmanuals}
+      - CHROMA_DB_PATH=/app/data/chroma_db_coop
+      - CHROMA_COLLECTION_NAME=${CHROMA_COLLECTION_NAME:-coopdocs}
 
       # Performance Settings
       - INGESTION_WORKERS=${INGESTION_WORKERS:-4}
@@ -65,12 +65,12 @@ services:
 
     volumes:
       # Persist ChromaDB data
-      - chroma_data:/app/data/chroma_db
+      - chroma_data_coop:/app/data/chroma_db_coop
 
-      # Mount Q:\ drive or documents directory
+      # Mount Co-Op documents directory
       # Windows: Use Docker Desktop file sharing settings
-      # Linux/WSL: Mount your Q:\ equivalent
-      - ${QMANUALS_HOST_PATH:-./sample_data}:/data/qmanuals:ro
+      # Linux/WSL: Mount your Co-Op documents path
+      - ${QMANUALS_HOST_PATH:-./coop_data}:/data/qmanuals:ro
 
       # Optional: Mount logs directory
       - ./logs:/app/logs
@@ -88,10 +88,10 @@ services:
       resources:
         limits:
           cpus: '4.0'      # Use up to 4 CPU cores
-          memory: 8G       # Maximum 8GB RAM
+          memory: 12G      # Maximum 12GB RAM
         reservations:
           cpus: '2.0'      # Reserve at least 2 cores
-          memory: 4G       # Reserve at least 4GB RAM
+          memory: 6G       # Reserve at least 6GB RAM
 
     # Health check
     healthcheck:
@@ -102,5 +102,5 @@ services:
       start_period: 60s
 
 volumes:
-  chroma_data:
+  chroma_data_coop:
     driver: local
