@@ -18,7 +18,7 @@ def render_chat_interface():
     st.header("💬 Chat with Student Testing & Product Research Documentation")
 
     # Chat configuration
-    col1, col2, col3 = st.columns([2, 2, 1])
+    col1, col2 = st.columns([3, 1])
 
     with col1:
         workflow_type = st.selectbox(
@@ -28,18 +28,12 @@ def render_chat_interface():
         )
 
     with col2:
-        top_k = st.slider(
-            "Context chunks",
-            min_value=1,
-            max_value=20,
-            value=5,
-            help="Number of relevant chunks to retrieve (searches ALL documents)",
-        )
-
-    with col3:
         if st.button("🗑️ Clear Chat", use_container_width=True):
             st.session_state.messages = []
             st.rerun()
+
+    # Always use maximum chunks for best results
+    top_k = 20
 
     st.markdown("---")
 

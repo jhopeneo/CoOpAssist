@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     )
 
     similarity_threshold: float = Field(
-        default=0.35,  # Lowered to allow broader matches - L2 distances of ~1.85 will pass
+        default=0.50,  # Increased for more precise matches - filters out loosely-related docs
         ge=0.0,
         le=1.0,
         description="Minimum similarity score for retrieval (adjusted for L2 distance)"

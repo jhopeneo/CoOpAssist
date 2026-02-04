@@ -4,6 +4,7 @@ Retrieves relevant documents from ChromaDB based on query similarity.
 """
 
 from typing import List, Dict, Any, Optional
+import re
 from loguru import logger
 
 from config.settings import get_settings
@@ -38,13 +39,92 @@ class DocumentRetriever:
             f"threshold={self.similarity_threshold}"
         )
 
+    def _extract_codes(self, query: str) -> List[str]:
+        """Extract potential material codes or part numbers from query.
+
+        Args:
+            query: Query text.
+
+        Returns:
+            List of extracted codes (material numbers, part numbers, etc.).
+        """
+        codes = []
+
+        # Pattern 1: Number-number+letter (e.g., "312-80A", "1-80B")
+        pattern1 = re.findall(r'\b\d+[-/]\d+[A-Za-z]+\b', query)
+        codes.extend(pattern1)
+
+        # Pattern 2: Word/brand followed by number (e.g., "primeco 585", "PrimeCo 585")
+        pattern2 = re.findall(r'\b[A-Za-z]+\s+\d+\b', query, re.IGNORECASE)
+        codes.extend(pattern2)
+
+        # Pattern 3: Alphanumeric codes (e.g., "ABC123", "XYZ-456")
+        pattern3 = re.findall(r'\b[A-Z]{2,}\d+\b', query)
+        codes.extend(pattern3)
+
+        return list(set(codes))  # Remove duplicates
+
+    def _exact_search(self, query: str, codes: List[str], top_k: int) -> List[Dict[str, Any]]:
+        """Perform exact text matching for material codes.
+
+        Args:
+            query: Original query text.
+            codes: Extracted codes to search for.
+            top_k: Number of results to return.
+
+        Returns:
+            List of documents containing exact matches.
+        """
+        if not codes:
+            return []
+
+        logger.info(f"Exact search for codes: {codes}")
+
+        # Get all documents from vector store (ChromaDB doesn't support text search directly)
+        # We'll use get() with limit to retrieve many documents and filter in memory
+        try:
+            # Get a large batch of documents to search through
+            all_docs = self.vector_store.collection.get(
+                limit=10000,  # Adjust based on your collection size
+                include=["documents", "metadatas"]
+            )
+
+            matches = []
+            for i, content in enumerate(all_docs["documents"]):
+                # Check if any code appears in the content
+                content_lower = content.lower()
+                for code in codes:
+                    if code.lower() in content_lower:
+                        # Calculate a simple match score based on occurrences
+                        occurrences = content_lower.count(code.lower())
+                        matches.append({
+                            "id": all_docs["ids"][i],
+                            "content": content,
+                            "metadata": all_docs["metadatas"][i],
+                            "distance": 0.0,  # Exact match gets best score
+                            "similarity_score": 1.0,  # Perfect score for exact match
+                            "match_type": "exact",
+                            "match_count": occurrences
+                        })
+                        break  # Only add once per document
+
+            # Sort by number of occurrences (more mentions = more relevant)
+            matches.sort(key=lambda x: x["match_count"], reverse=True)
+
+            logger.info(f"Found {len(matches)} exact matches")
+            return matches[:top_k]
+
+        except Exception as e:
+            logger.warning(f"Exact search failed: {e}")
+            return []
+
     def retrieve(
         self,
         query: str,
         top_k: Optional[int] = None,
         filters: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """Retrieve relevant documents for a query.
+        """Retrieve relevant documents using hybrid search (exact + semantic).
 
         Args:
             query: Query text.
@@ -58,29 +138,57 @@ class DocumentRetriever:
 
         logger.info(f"Retrieving documents for query: '{query[:50]}...'")
 
-        # Query vector store
-        results = self.vector_store.query(
+        # Step 1: Extract potential codes/part numbers
+        codes = self._extract_codes(query)
+
+        # Step 2: Perform exact search for codes
+        exact_results = []
+        if codes:
+            exact_results = self._exact_search(query, codes, top_k)
+            logger.info(f"Hybrid search: Found {len(exact_results)} exact matches for codes: {codes}")
+
+        # Step 3: Perform semantic search
+        semantic_results = self.vector_store.query(
             query_text=query, n_results=top_k, where=filters
         )
 
-        # Filter by similarity threshold
-        filtered_results = []
-        for doc in results:
-            # ChromaDB returns L2 distance (lower is better)
-            # Convert to similarity score (higher is better)
+        # Filter semantic results by similarity threshold
+        filtered_semantic = []
+        for doc in semantic_results:
             distance = doc["distance"]
-            similarity = 1 / (1 + distance)  # Convert L2 distance to similarity
+            similarity = 1 / (1 + distance)
 
             if similarity >= self.similarity_threshold:
                 doc["similarity_score"] = similarity
-                filtered_results.append(doc)
+                doc["match_type"] = "semantic"
+                filtered_semantic.append(doc)
+
+        # Step 4: Combine and de-duplicate results
+        combined = []
+        seen_ids = set()
+
+        # Prioritize exact matches
+        for doc in exact_results:
+            if doc["id"] not in seen_ids:
+                combined.append(doc)
+                seen_ids.add(doc["id"])
+
+        # Add semantic matches
+        for doc in filtered_semantic:
+            if doc["id"] not in seen_ids:
+                combined.append(doc)
+                seen_ids.add(doc["id"])
+
+        # Limit to top_k results
+        final_results = combined[:top_k]
 
         logger.info(
-            f"Retrieved {len(filtered_results)} documents "
-            f"(filtered from {len(results)} by threshold)"
+            f"Retrieved {len(final_results)} documents "
+            f"({len([d for d in final_results if d.get('match_type') == 'exact'])} exact, "
+            f"{len([d for d in final_results if d.get('match_type') == 'semantic'])} semantic)"
         )
 
-        return filtered_results
+        return final_results
 
     def retrieve_with_context(
         self, query: str, top_k: Optional[int] = None, filters: Optional[Dict[str, Any]] = None
