@@ -1,14 +1,14 @@
-# QmanAssist
+# CoOpAssist
 
-**AI-Powered Quality Documentation Assistant for Neocon International**
+**AI-Powered Documentation Assistant for Student Testing & Product Research at Neocon International**
 
-QmanAssist is a privacy-focused RAG (Retrieval-Augmented Generation) system that allows you to chat with your quality documentation stored on the network share. Built with modern AI technologies, QmanAssist provides intelligent answers to questions about your quality manuals with source citations.
+CoOpAssist is a privacy-focused RAG (Retrieval-Augmented Generation) system that allows you to chat with your documentation stored on the network share. Built with modern AI technologies, CoOpAssist provides intelligent answers to questions about your documents with source citations.
 
 ## Features
 
 - **Multi-Provider LLM Support**: Switch between OpenAI GPT, Anthropic Claude, and future Ollama support
 - **Document Processing**: Handles PDF, Word (.docx), and Excel/CSV files
-- **Network Share Integration**: Direct access to `\\neonas-01\qmanuals` (Q:\ drive)
+- **Network Share Integration**: Direct SMB access to `\\neonas-01\shared\1 - Coop` via built-in network utilities
 - **Semantic Search**: ChromaDB vector database for fast, accurate document retrieval
 - **Web Interface**: User-friendly Streamlit chat interface
 - **Privacy-First**: All data stays internal, no external leakage
@@ -55,7 +55,7 @@ QmanAssist is a privacy-focused RAG (Retrieval-Augmented Generation) system that
 ## Project Structure
 
 ```
-QmanAssist/
+CoOpAssist/
 ├── config/              # Configuration files
 │   ├── settings.py      # Pydantic settings
 │   └── llm_providers.yaml
@@ -318,25 +318,25 @@ ruff check src/ tests/
 
 ## Troubleshooting
 
-### Q:\ Drive Access Issues
+### Network Share Access Issues
 
-**Windows:**
+**The system uses built-in SMB (network file sharing) to access documents** - no manual mounting required!
+
+Network path: `\\neonas-01\shared\1 - Coop`
+
+**To verify network access:**
 ```bash
-# Check if drive is mapped
+# From Windows - check if S: drive is mapped
 net use
 
-# Map drive manually
-net use Q: \\neonas-01\qmanuals
+# Should show: S: \\NeoNAS-01\shared
 ```
 
-**Linux:**
-```bash
-# Check if mounted
-df -h | grep qmanuals
-
-# Mount manually
-sudo mount -t cifs //neonas-01/qmanuals /mnt/q -o username=YOUR_USERNAME
-```
+**If you get "No results found" when searching:**
+1. **Check if documents were recently added** - Last ingestion date is shown in Document Explorer
+2. **Re-ingest documents** - Use the "Re-ingest Documents" button in the Document Explorer tab
+3. **Verify search terms** - The system searches document content, not just filenames
+4. **Check document location** - Ensure files are actually in subdirectories of `1 - Coop`
 
 ### API Key Issues
 
@@ -353,10 +353,24 @@ python scripts/test_llm_connection.py
 
 If you encounter database issues:
 ```bash
-# Reset database
-rm -rf data/chroma_db/*
-python scripts/init_db.py
+# For Docker deployment (recommended):
+docker exec coopassist python scripts/init_db.py
+
+# Or reset the database volume:
+docker-compose down
+docker volume rm coopassist_chroma_data_coop
+docker-compose up -d
+# Then re-ingest documents from the UI
 ```
+
+### Search Not Finding Specific Codes or Terms
+
+If searching for specific material codes, part numbers, or technical terms returns no results:
+
+1. **Verify the documents exist**: Check that files containing those terms are actually in the `1 - Coop` directory
+2. **Re-ingest to pick up new files**: Documents added after the last ingestion won't be searchable
+3. **Check exact terminology**: The documents might use different terminology (e.g., "PrimeCo" vs "Prime Co")
+4. **Inspect the indexed documents**: Go to Document Explorer to see what files are currently indexed
 
 ## Security & Privacy
 
@@ -374,7 +388,7 @@ Internal use only - Neocon International
 
 For issues or questions, contact:
 - IT Manager: jhope@neoconinc.com
-- Repository: /home/jhope/QmanAssist
+- Repository: /home/jhope/CoOpAssist
 
 ## Acknowledgments
 
